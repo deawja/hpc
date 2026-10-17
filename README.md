@@ -1,219 +1,312 @@
-![](https://github.com/CyCTW/PP-Final_Project/workflows/ParallelMCTS/badge.svg)
-[![codecov](https://codecov.io/gh/CyCTW/Parallel-MCTS/branch/master/graph/badge.svg?token=LPORRSHSZT)](https://codecov.io/gh/CyCTW/Parallel-MCTS)
+# Parallel MCTS Benchmark with OpenMP
 
-# Parallel Monte Carlo Tree Search
-This repo implements three methods of Parallel Monte Carlo Tree Search with C++.
+โครงงานวิชา **High Performance Computing** ศึกษาประสิทธิภาพของ Monte Carlo Tree Search (MCTS) สำหรับเกม Surakarta โดยเปรียบเทียบ Serial, Leaf, Root และ Tree เมื่อเปลี่ยนจำนวนเธรดและปริมาณงาน
 
-**The Three parallel methods:**
-- Leaf parallelization
-- Root parallelization
-- Tree parallelization
+พัฒนาต่อยอดจาก [CyCTW/Parallel-MCTS](https://github.com/CyCTW/Parallel-MCTS) โดยเพิ่มการจับเวลา การบันทึกเกมอ้างอิง และการทดลองจากกระดานชุดเดียวกัน
 
-Also, we analyze different methods' performance against each other in [Surakarta](https://en.wikipedia.org/wiki/Surakarta_(game)) Game. 
-If you're interested in details, here are the links to our search:
-- [Experiment report](https://hackmd.io/2I8fuKY0TY-sRNQU4Dcuog).
-- [Slides](https://docs.google.com/presentation/d/11DV9MijsDh2fgR8W5I8kdCT4u630Bibq6ZfMPpffD6U/edit#slide=id.p)
-## Features
-- CI pipeline (Autobuild, Autotest)
-- Code coverage check
-## Structure
-```
-Parallel-MCTS/
-├── build
-├── CMakeLists.txt
-├── CMakeLists.txt.in
-├── LICENSE
-├── README.md
-├── script
-│   ├── cov.sh
-│   └── record.sh
-├── src
-│   ├── Agent.h
-│   ├── board.h
-│   ├── config.h
-│   ├── Log.h
-│   ├── main.cpp
-│   ├── MCTS.h
-│   ├── ParallelRoot.h
-│   ├── ParallelTree.h
-│   ├── Policy.h
-│   └── TreeNode.h
-└── unittest
-    └── MCTS_UnitTest.cpp
+## วิธีค้นหาที่ศึกษา
 
-4 directories, 17 files
-```
-## Development Environment
-- Ubuntu 18.04
-- GCC 7.5.0
-- CMAKE 3.10
-- GoogleTest 1.10.0 (latest)
+MCTS ทำซ้ำ 4 ขั้นตอน ได้แก่ Selection, Expansion, Simulation และ Backpropagation เพื่อสะสมสถิติก่อนเลือกตาเดิน
 
-## Requirement
-### Must
-- C++ 17
-- OpenMP
-- CMAKE (3.10)
-### optional
-- lcov 
-- gcov 
+| วิธี | การแบ่งงาน |
+|---|---|
+| Serial | เธรดเดียวทำทุกขั้นตอนบนต้นไม้เดียว |
+| Leaf | เลือกเส้นทางและขยายต้นไม้ก่อน แล้วให้หลายเธรดจำลองเกมจากสถานะเดียวกัน ใน OpenMP ใช้ `critical` ควบคุมการอัปเดตผล และรอจบชุดก่อนเริ่มชุดถัดไป |
+| Root | แต่ละเธรดค้นหาบนต้นไม้ของตนเองพร้อมกัน แล้วรวมสถิติเพื่อเลือกตาเดิน |
+| Tree | หลายเธรดค้นหาบนต้นไม้ร่วมกัน โดยใช้กลไก synchronization สำหรับข้อมูลร่วม |
 
-## Build
-### Construct build directory (optional, but recommened)
-```
-mkdir build
-```
-This step creates a `build` directory, which builds a clean environment for CMake compiling and building.
-### Compile file with CMake
-```
-cd build
-cmake ..
-```
-or
-```
-cmake .
-```
-if you don't create the `build` directory.
-### Build file
-```
-cmake --build .
-```
-or
-```
-make
-```
-This command will generate two execution file 
-- `mcts` for executing main function.
-- `MCTS_UnitTest` for unit testing.
+## ขอบเขตเวอร์ชัน
 
-## Usage
-For the specific usage, you can type:
-```
-./mcts -?
-```
-for detailed usage.
+คำสั่งทดลองใน README นี้อ้างอิง `Benchmark.h` รุ่นที่รองรับ **Serial และ 1, 2, 3, 4 เธรด** ซึ่งใช้เก็บผลชุดสุดท้าย หากไฟล์ที่ใช้ยังมี `threadCounts[] = {1, 2, 4}` หรือปฏิเสธ Serial ให้เปลี่ยนเป็นรุ่นล่าสุดก่อนรัน
 
-For example, the command will print
-```
-Usage: mcts [options]
+ต้องใช้ `Policy.h`, `ParallelRoot.h` และ `ParallelTree.h` รุ่นที่แก้การแบ่ง workload แล้ว เพื่อให้ count หมายถึงจำนวน simulations รวมต่อการค้นหา ไม่ใช่จำนวนต่อเธรด
 
-Note: -c (count) & -t (time) options can't be specified simultaneously.
+## สภาพแวดล้อมที่ใช้เก็บผล
 
-   -c  --simCount   <simulationCount>           Set simulation count per step.       default: 1000
-   -t  --simTime    <simulationTime (second)>   Set simulation time per step.        default: -1
-   -T  --threadNum  <threadNum>                 Set number of thread num.            default: 4
-   -p  --policy     <blackAndWhitePolicy>       Set Player's policy 
-                    <blackPolicy> <whitePolicy>  (options: Serial, Leaf, Root, Tree) default: Tree Serial)
+| รายการ | รายละเอียด |
+|---|---|
+| CPU | AMD Ryzen 7 8845HS |
+| โครงสร้าง CPU ที่ระบบรายงาน | 8 คอร์ / 16 logical CPUs |
+| Architecture | x86_64 |
+| RAM ที่ Linux มองเห็น | ประมาณ 15 GiB |
+| OS ภายใน Container | Ubuntu 22.04.5 LTS |
+| Compiler | g++ 11.4.0 |
+| Build tools | CMake และ OpenMP |
+| จำนวนเธรดในการทดลอง | 1, 2, 3, 4 |
 
-   -m  --method     <blackAndWhiteMethod>       Set Player's arallel methods 
-                    <blackMethod> <whiteMethod>  (options: openmp, pthread)          default: openmp)
+ระบบรายงาน Microsoft hypervisor และ `nproc` เท่ากับ 16 ข้อมูลดังกล่าวไม่ยืนยัน CPU quota หรือการผูกเธรดกับคอร์ของ Container
 
-   -?  --help                                   Help message.
+## เตรียมโปรแกรม
+
+ต้องมี Docker และ image ชื่อ `parallel-mcts` ที่ติดตั้งเครื่องมือ C++17, CMake, Git และ OpenMP แล้ว ชื่อ image นี้เป็นชื่อที่ใช้ในเครื่องทดลอง ไม่ใช่การระบุ image สาธารณะ
+
+หากยังไม่มี image สามารถสร้างสภาพแวดล้อมพื้นฐานด้วย Dockerfile ต่อไปนี้ในโฟลเดอร์โปรเจกต์:
+
+```dockerfile
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /workspace
+CMD ["bash"]
 ```
 
-### Some quick examples:
-- Serial version (Black) v.s. Serial version (White) with simulation count 1000
-    ```
-    ./mcts -c 1000 -p Serial
-    ```
-- ParallelTree version (Black) v.s. Serial version (White) with simulation time 2s
-    ```
-    ./mcts -t 2 -p Tree Serial
-    ```
-*Note: we can't set Count and Time simultaneously, choose only one option.*
+สร้าง image:
 
-- ParallelRoot version (Black) v.s. ParallelLeaf (White) with 4 thread, both use `openmp` implementation.
-    ```
-    ./mcts -T 4 -p Root Tree -m openmp
-    ```
-
-- ParallelRoot version (Black) v.s. ParallelLeaf (White) with 4 thread. Use `openmp` (Black) and `pthread` (White) implementation.
-    ```
-    ./mcts -T 4 -p Root Leaf -m openmp pthread
-    ```
-## UnitTest (GoogleTest)
-### command:
-```
-./MCTS_UnitTest
-```
-or
-```
-ctest
-```
-Both command will run the same unittest script stored in `<ProjectRoot>/unittest/MCTS_UnitTest.cpp`
-
-*Note:*
-*The first command runs the test script using Googletest's origin format.*
-
-*The second command runs the same test script, but from CMake.*
-### Explanation
-Mainly, the test script checks the Monte Carlo Tree Search's simulation count and simulation time works correctly.
-
-## CodeCoverage Report 
-If you want to see the code coverage report, you should recompile the project with `-DCOVERAGE=ON` 
-*Note: default option is `-DCOVERAGE=OFF` because this option will slow down the whole program.*
-
-First return to build directory.
-```
-cd <ProjectRoot>/build
-```
-Then, recompile project with flag `-DCOVERAGE=OFF`
-```
-cmake -DCOVERAGE=ON ..
-```
-Rebuild the project
-```
-cmake --build .
-```
-Last, move to `script` folder and execute the `cov.sh` script.
-```
-cd <ProjectRoot>/script
-./cov.sh
-```
-*Note: you should install `lcov` and `gcov` before execute the script.*
-
-If everything works fine, the script will open a html file, which contains the code coverage report.
-## Experiment record
-If you want to run multiple games on different policys, and record the result for further analysis, you can check our `record.sh`
-
-You can move to `script` directory to check the `record.sh` file.
-```
-cd <ProjectRoot>/script
-```
-### usage
-```
-Usage: ./record.sh [options]
-
-Note: -c (count) & -t (time) options can't be specified simultaneously.
-
-   -c  --simCount   <simulationCount>           Set simulation count per step.       default: 1000
-   -t  --simTime    <simulationTime (second)>   Set simulation time per step.        default: -1
-   -T  --threadNum  <threadNum>                 Set number of thread num.            default: 4
-   -p  --policy     <blackAndWhitePolicy>       Set Player's policy 
-                    <blackPolicy> <whitePolicy>  (options: Serial, Leaf, Root, Tree) default: Tree Serial)
-
-   -m  --method     <blackAndWhiteMethod>       Set Player's arallel methods 
-                    <blackMethod> <whiteMethod>  (options: openmp, pthread)          default: openmp)
-
+```bash
+docker build -t parallel-mcts .
 ```
 
-### Some quick examples:
-- Serial version (Black) v.s. Serial version (White) with simulation count 1000
-    ```
-    ./record.sh -c 1000 -p Serial
-    ```
-- ParallelTree version (Black) v.s. Serial version (White) with simulation time 2s
-    ```
-    ./record.sh -t 2 -p Tree Serial
-    ```
-*Note: we can't set Count and Time simultaneously, choose only one option.*
+หากมี image อยู่แล้ว ข้ามขั้นตอนสร้าง image ได้
 
-- ParallelRoot version (Black) v.s. ParallelLeaf (White) with 4 thread, both use `openmp` implementation.
-    ```
-    ./record.sh -T 4 -p Root Tree -m openmp
-    ```
+## เปิด Docker และคอมไพล์
 
-- ParallelRoot version (Black) v.s. ParallelLeaf (White) with 4 thread. Use `openmp` (Black) and `pthread` (White) implementation.
-    ```
-    ./record.sh -T 4 -p Root Leaf -m openmp pthread
-    ```
+เปิด terminal ของเครื่องหลักในโฟลเดอร์ที่มี `CMakeLists.txt` แล้วรัน:
+
+```bash
+docker run --rm -it -v "${PWD}:/workspace" -w /workspace parallel-mcts
+```
+
+คำสั่งต่อจากนี้รัน **ภายใน Container จาก `/workspace`**:
+
+```bash
+cd /workspace
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCOVERAGE=OFF
+cmake --build build -j
+```
+
+CMake ของโปรเจกต์ใช้ C++17 และ `-fopenmp` พร้อม optimization `-O3` และดาวน์โหลด GoogleTest ระหว่าง configure จึงต้องเข้าถึงแหล่งดาวน์โหลดได้ในครั้งแรก
+
+ไฟล์โปรแกรมอยู่ที่ `build/mcts` หลังแก้ source code ต้อง build ใหม่ก่อนรัน ผลลัพธ์ที่เขียนใต้ `/workspace` จะอยู่ในโฟลเดอร์ที่ mount จากเครื่องหลักด้วย
+
+## โหมดที่ 1: เล่นเกมปกติ
+
+ตัวอย่าง Tree ฝั่ง Black กับ Serial ฝั่ง White:
+
+```bash
+./build/mcts -c 2000 -T 4 -p Tree Serial -m openmp
+```
+
+| ตัวเลือก | ความหมาย |
+|---|---|
+| `-c 2000` | จำนวน simulations รวมต่อการค้นหาหนึ่งตาในโค้ดที่ปรับแล้ว |
+| `-T 4` | จำนวนเธรดสำหรับวิธีขนาน |
+| `-p Tree Serial` | วิธีค้นหาฝั่ง Black และ White ตามลำดับ |
+| `-m openmp` | ใช้ OpenMP ทั้งสองฝั่ง |
+| `-t 2` | กำหนดเวลาค้นหาต่อตา 2 วินาที ใช้แทน `-c` |
+
+ห้ามกำหนด `-c` และ `-t` พร้อมกัน สำหรับการวัด Speedup แบบงานคงที่ให้ใช้ count
+
+โหมดนี้รายงานเวลาแต่ละตา จำนวนตาที่เดินสำเร็จ เวลาเฉลี่ยแยก Black/White/รวม และเวลาทั้งเกม ค่าเฉลี่ยต่อตานับเฉพาะตาที่เดินสำเร็จ ส่วนเวลาทั้งเกมรวมการพิมพ์กระดานระหว่างเล่น
+
+การเล่นเกมใหม่ทุกครั้งอาจมีจำนวนตาและเส้นทางต่างกัน จึงใช้โหมด Benchmark ด้านล่างเป็นผลหลักในการเปรียบเทียบจำนวนเธรด
+
+## โหมดที่ 2: บันทึกเกมอ้างอิง
+
+```bash
+./build/mcts --record reference.moves 1000
+```
+
+- ใช้ Serial 1 เธรดทั้งสองฝั่ง ค้นหา 1,000 ครั้งต่อตา
+- บันทึกลำดับเดินใน `reference.moves` เพื่อสร้างสถานะกระดานก่อนแต่ละตากลับมาได้
+- หยุดเมื่อไม่มีตาเดิน หรือถึง `LIMIT_STEP` โดยบันทึก `END terminal` หรือ `END limit`
+- โปรแกรมไม่เขียนทับไฟล์อ้างอิงที่มีอยู่แล้ว หากมีไฟล์ที่ต้องการใช้ ให้ข้ามขั้นตอนนี้
+
+จำนวนสถานะขึ้นกับเกมที่สร้าง ไม่ได้รับประกันว่าจะเท่ากันทุกครั้ง ผลทดลองชุดนี้ใช้ **303 สถานะ: Black 152 และ White 151**
+
+ใช้ไฟล์อ้างอิงเดียวกันทุกวิธี ทุก workload และทุกจำนวนเธรด ค่า 1,000 ตอนสร้างเกมเป็นงบค้นหาของเกมอ้างอิง แยกจาก workload ตอน Benchmark
+
+## โหมดที่ 3: Benchmark
+
+รูปแบบคำสั่ง:
+
+```text
+./build/mcts --benchmark <reference> <policy> <baseCount> <rounds> <method> <outputPrefix>
+```
+
+ตัวอย่างการทดลองหลัก:
+
+```bash
+./build/mcts --benchmark reference.moves Tree 2000 10 openmp result_tree_2000
+```
+
+| อาร์กิวเมนต์ | ความหมาย |
+|---|---|
+| `reference.moves` | ไฟล์เกมอ้างอิง |
+| `Tree` | วิธีค้นหา: Serial, Leaf, Root หรือ Tree |
+| `2000` | count เริ่มต้น โปรแกรมทดลอง 2,000, 4,000 และ 8,000 |
+| `10` | จำนวนรอบต่อเงื่อนไข |
+| `openmp` | วิธีขนานที่ใช้ในการทดลองนี้ |
+| `result_tree_2000` | ชื่อขึ้นต้นไฟล์ CSV |
+
+Tree, Root และ Leaf รุ่นล่าสุดทดลอง 1, 2, 3, 4 เธรดอัตโนมัติ ส่วน Serial ทดลอง 1 เธรดเท่านั้น แม้ระบุ `openmp` ในช่อง method ก็ไม่ได้ทำให้ Serial เป็นแบบขนาน
+
+### คำสั่งทดลองครบทั้ง 4 วิธี
+
+รันทีละคำสั่งจนเสร็จ ไม่รันหลาย Benchmark พร้อมกันเพื่อหลีกเลี่ยงการแย่งทรัพยากร:
+
+```bash
+./build/mcts --benchmark reference.moves Tree 2000 10 openmp result_tree_2000
+./build/mcts --benchmark reference.moves Root 2000 10 openmp result_root_2000
+./build/mcts --benchmark reference.moves Leaf 2000 10 openmp result_leaf_2000
+./build/mcts --benchmark reference.moves Serial 2000 10 openmp result_serial_2000
+```
+
+คำสั่งที่ใช้ output prefix เดิมจะเขียนทับ CSV เดิม หากต้องการเก็บหลายชุดให้เปลี่ยน prefix
+
+### แผนการทดลอง
+
+| วิธี | จำนวนเธรด | Count ต่อสถานะ | รอบต่อเงื่อนไข |
+|---|---|---|---:|
+| Tree | 1, 2, 3, 4 | 2,000 / 4,000 / 8,000 | 10 |
+| Root | 1, 2, 3, 4 | 2,000 / 4,000 / 8,000 | 10 |
+| Leaf | 1, 2, 3, 4 | 2,000 / 4,000 / 8,000 | 10 |
+| Serial | 1 | 2,000 / 4,000 / 8,000 | 10 |
+
+รวม 39 เงื่อนไข หรือ 390 รอบของการค้นหาทั้งชุดกระดาน
+
+สำหรับชุด 303 สถานะ:
+
+| Workload | Count ต่อสถานะ | จำนวน search รวมต่อรอบ |
+|---|---:|---:|
+| 1× | 2,000 | 606,000 |
+| 2× | 4,000 | 1,212,000 |
+| 4× | 8,000 | 2,424,000 |
+
+Root และ Tree แบ่งงบงานระหว่าง worker พร้อมแจกเศษให้ครบ ส่วน Leaf จำกัดขนาดชุดจำลองตามงานที่เหลือ โปรแกรมตรวจจำนวน search ที่รายงานกับ count ทุกสถานะ
+
+## วิธีจับเวลา
+
+1. โหลดเกมอ้างอิงและสร้างชุดกระดานก่อนจับเวลา
+2. เตรียมสำเนากระดานและ Log ใหม่สำหรับแต่ละสถานะ
+3. เรียก `omp_get_wtime()` ก่อนและหลังฟังก์ชันค้นหา
+4. ตรวจผลและเขียน CSV หลังหยุดจับเวลา
+5. รวมเวลาค้นหาครบทุกสถานะเป็นเวลาหนึ่งรอบ แล้วทำซ้ำตามจำนวน rounds
+
+```cpp
+board testBoard = positions[i];
+PIECE player = testBoard.take_turn();
+Log log;
+
+double start = omp_get_wtime();
+Pair move = policy(testBoard, player, env, log);
+double elapsed = omp_get_wtime() - start;
+```
+
+เวลา Benchmark รวมการสร้าง/ทำลายต้นไม้และการรวมผลที่เกิดภายในฟังก์ชันค้นหา แต่ไม่รวมการอ่านไฟล์ เตรียมสำเนากระดาน ตรวจผล และเขียน CSV
+
+ค้นหาทีละสถานะตามลำดับ โดยใช้หลายเธรดช่วยค้นหาภายในสถานะนั้น ไม่ได้แบ่ง 303 กระดานไปค้นหาพร้อมกัน และไม่ใช้ผลค้นหาใหม่เปลี่ยนสถานะถัดไป
+
+**เวลาที่รายงานคือเวลาค้นหาชุดกระดานอ้างอิง ไม่ใช่เวลาเล่นเกมใหม่จนจบ**
+
+## ผลลัพธ์ CSV
+
+| ไฟล์ | เนื้อหา |
+|---|---|
+| `<prefix>_moves.csv` | เวลาแต่ละสถานะ แยกวิธีการตั้งค่า รอบ และสีผู้เล่น |
+| `<prefix>_rounds.csv` | เวลารวมแต่ละรอบ แยก Black, White และรวม |
+| `<prefix>_summary.csv` | เวลาเฉลี่ยและ Speedup ของแต่ละเงื่อนไข |
+
+คอลัมน์สำคัญใน summary:
+
+| คอลัมน์ | ความหมาย |
+|---|---|
+| `count` | จำนวน simulations รวมต่อสถานะ |
+| `threads` | จำนวนเธรดที่ตั้งไว้ |
+| `rounds` | จำนวนรอบที่นำมาเฉลี่ย |
+| `positions` | จำนวนกระดานอ้างอิง |
+| `searches_per_round` | งานรวมต่อรอบ = count × positions |
+| `mean_black_seconds` | เวลาเฉลี่ยต่อรอบสำหรับสถานะฝั่ง Black |
+| `mean_white_seconds` | เวลาเฉลี่ยต่อรอบสำหรับสถานะฝั่ง White |
+| `mean_total_seconds` | เวลาเฉลี่ยค้นหาครบทุกสถานะต่อรอบ |
+| `mean_seconds_per_position` | เวลาเฉลี่ยต่อสถานะ |
+| `speedup` | อัตราเร่งเทียบ 1 เธรดของวิธีเดียวกันและ count เดียวกัน |
+
+รุ่นล่าสุดยังมีจำนวนสถานะแยกสี และเวลาเฉลี่ยต่อสถานะแยกสี ใช้ `mean_total_seconds` และ `speedup` เป็นผลหลักในตารางนำเสนอ
+
+## ตัวชี้วัด
+
+- **Tₚ**: เวลาเฉลี่ยค้นหาครบชุดกระดานเมื่อใช้ p เธรด
+- **Speedup: Sₚ = T₁ / Tₚ**
+- **Efficiency: Eₚ = (Sₚ / p) × 100%**
+
+Efficiency ไม่ใช่เปอร์เซ็นต์การใช้งาน CPU ส่วนการเปรียบเทียบเวลาโดยตรงระหว่างวิธีให้ดูเวลาเป็นวินาที เพราะแต่ละวิธีใช้ฐาน 1 เธรดต่างกัน
+
+Tree 1 เธรดและ Serial ใช้โค้ดคนละเส้นทาง จึงไม่จำเป็นต้องใช้เวลาเท่ากัน ใช้ Tree 1 เธรดเป็นฐานสำหรับ Speedup ของ Tree และรายงาน Serial เป็นผลอ้างอิงเพิ่มเติม
+
+## สรุปผลที่เก็บได้
+
+ผลจากไฟล์ `result_*_2000_summary.csv` ที่ใช้ในการนำเสนอ เฉลี่ย 10 รอบต่อเงื่อนไข จากกระดาน 303 สถานะ ไม่ใช่ค่าที่รับประกันเมื่อรันใหม่
+
+เวลาเฉลี่ยต่อรอบ (วินาที):
+
+| Count | Serial 1 เธรด | Leaf 4 เธรด | Root 4 เธรด | Tree 4 เธรด |
+|---:|---:|---:|---:|---:|
+| 2,000 | 21.774 | 12.761 | 8.276 | 7.058 |
+| 4,000 | 43.226 | 24.349 | 18.268 | 13.812 |
+| 8,000 | 86.740 | 43.101 | 35.116 | 27.137 |
+
+Speedup ที่ 4 เธรด เทียบกับ 1 เธรดของแต่ละวิธี:
+
+| Count | Leaf | Root | Tree |
+|---:|---:|---:|---:|
+| 2,000 | 2.341 | 3.168 | 3.075 |
+| 4,000 | 2.378 | 3.130 | 3.121 |
+| 8,000 | 2.433 | 3.242 | 3.227 |
+
+Tree ใช้เวลาต่ำสุดในบรรดาวิธีขนานที่ทดลอง เมื่อเทียบที่จำนวนเธรดและ workload เดียวกัน ขณะที่ Root มี Speedup เทียบฐานของตนเองสูงกว่าเล็กน้อย ผลทั้งสองไม่ขัดกัน เพราะฐานเวลาต่างกัน
+
+## ข้อจำกัด
+
+- กระดานอ้างอิงมาจากเกมเดียว ผลอาจเปลี่ยนเมื่อใช้เกมอื่น
+- จำนวน simulations เท่ากันไม่ได้หมายความว่าทุก simulation มีเส้นทางหรือจำนวนคำสั่งเท่ากัน
+- MCTS มีความสุ่ม การรันใหม่จึงไม่รับประกันคำตอบหรือเวลาเดิม
+- ผลนี้ไม่ได้วัดคุณภาพตาเดินหรืออัตราชนะ
+- สภาพแวดล้อมเสมือน งานเบื้องหลัง และข้อจำกัดทรัพยากรอาจกระทบเวลา
+- ไฟล์ summary มีค่าเฉลี่ย หากต้องการ SD หรือช่วงความเชื่อมั่นต้องใช้ข้อมูลรายรอบ
+- การตรวจ legal move และ search count เป็นการตรวจเฉพาะจุด ไม่ใช่หลักฐานยืนยันว่าโค้ดขนานไม่มี data race ทุกกรณี
+
+## การแก้ปัญหา
+
+### `unrecognized option '--record'` หรือ `'--benchmark'`
+
+ตรวจว่า source code มีส่วนรับคำสั่งใหม่ก่อน `setEnvParameter()` และ include `Benchmark.h` หลัง `setPolicy()`:
+
+```bash
+cd /workspace
+grep -nE 'Benchmark.h|record|benchmark|setEnvParameter' src/main.cpp
+cmake --build build --clean-first -j
+```
+
+### `No such file or directory` ตอนรัน
+
+เมื่ออยู่ใน `/workspace` ใช้ `./build/mcts` เมื่ออยู่ใน `/workspace/build` ใช้ `./mcts` พาธของ `reference.moves` ก็อ้างอิงโฟลเดอร์ปัจจุบันเช่นกัน
+
+### `Reference already exists`
+
+ใช้ไฟล์เดิมทดลองได้เลย หรือเปลี่ยนชื่อไฟล์หากต้องการสร้างเกมอ้างอิงใหม่
+
+### `Invalid reference header` หรือเปิดไฟล์อ้างอิงไม่ได้
+
+ตรวจพาธและตรวจว่าไฟล์สร้างด้วย `--record` สำเร็จ:
+
+```bash
+head -n 1 reference.moves
+tail -n 1 reference.moves
+```
+
+ไฟล์ต้องเริ่มด้วย `MCTS_REFERENCE_V1` และจบด้วย `END terminal` หรือ `END limit`
+
+### `Search budget mismatch`
+
+ตรวจว่าใช้ไฟล์แบ่ง workload รุ่นแก้ไขครบแล้ว และ build โปรแกรมใหม่ ห้ามแก้โดยปิดการตรวจ เพราะจะทำให้เปรียบเทียบจำนวนงานไม่เท่ากัน
+
+### Serial ใช้กับ Benchmark ไม่ได้ หรือไม่มีผล 3 เธรด
+
+ตรวจ `Benchmark.h` ว่ารองรับ Serial และมี thread settings `{1, 2, 3, 4}` โดยให้ Serial ใช้เพียง setting แรก แล้ว build ใหม่
+
+## ที่มา
+
+- Original project: https://github.com/CyCTW/Parallel-MCTS
+- เก็บไฟล์ `LICENSE` ของต้นฉบับไว้กับโครงการ
+- ส่วนเพิ่มเติมสำหรับงานนี้: การแบ่งงบงานรวม การจับเวลา เกมอ้างอิง และ Benchmark/CSV
