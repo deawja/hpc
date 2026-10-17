@@ -8,6 +8,7 @@
 #include <utility>
 #include <shared_mutex>
 #include <atomic>
+#include <mutex>
 
 class MonteCarloTree;
 

@@ -58,7 +58,6 @@ public:
         tree.reset(before);
         // std::cout << "MCTS take action\n";
 
-        int count_sim = 0;
         auto start = chrono::steady_clock::now();
         auto end = chrono::steady_clock::now();
         auto diff_time = chrono::duration<double, milli>(end - start).count();
@@ -75,9 +74,13 @@ public:
         }
         else if(env.simulation_counts > 0) {
             start = chrono::steady_clock::now();
-            while (count_sim < env.simulation_counts) {
-                tree.parallelLeaf_tree_policy(env);
-                count_sim++;
+            while (tree.root->total_count.load() < env.simulation_counts) {
+                EnvParameter batch = env;
+                const int remaining = env.simulation_counts
+                    - tree.root->total_count.load();
+                if (batch.thread_num > remaining)
+                    batch.thread_num = remaining;
+                tree.parallelLeaf_tree_policy(batch);
             }
             end = chrono::steady_clock::now();
             diff_time = chrono::duration<double, milli>(end - start).count();
@@ -130,7 +133,8 @@ public:
             size_t child_size = trees[ thread_idx ].root->get_child_size();
             
             if (child_size == 0) {
-                return {};
+                // A worker can have a zero budget when count < thread count.
+                continue;
             }
 
             for(size_t child_idx = 0; child_idx < child_size; child_idx++){

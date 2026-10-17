@@ -27,12 +27,21 @@ public:
     }
     static void Pthread(MonteCarloTree *tree, EnvParameter env) {
         
+        // -c is the total budget across all workers.
+        auto workerEnv = [&](int index) {
+            EnvParameter local = env;
+            if (env.time <= 0 && env.simulation_counts > 0) {
+                local.simulation_counts = env.simulation_counts / env.thread_num
+                    + (index < env.simulation_counts % env.thread_num ? 1 : 0);
+            }
+            return local;
+        };
         std::thread workers[ env.thread_num ];
         for(int i=1; i < env.thread_num; i++) {
-            workers[i] = std::thread(ParallelTree::treeParallization, tree, env);
+            workers[i] = std::thread(ParallelTree::treeParallization, tree, workerEnv(i));
         }
         
-        ParallelTree::treeParallization(tree, env);
+        ParallelTree::treeParallization(tree, workerEnv(0));
         for(int i=1; i < env.thread_num; i++) {
             workers[i].join();
         }
@@ -46,8 +55,10 @@ public:
         if (env.simulation_counts > 0) {
             #pragma omp parallel for
             for (int i = 0; i < env.thread_num; ++i ){
+                const int budget = env.simulation_counts / env.thread_num
+                    + (i < env.simulation_counts % env.thread_num ? 1 : 0);
                 int count_sim = 0;
-                while (count_sim < env.simulation_counts)
+                while (count_sim < budget)
                 {
                     tree->parallelTree_tree_policy();
                     count_sim++;
